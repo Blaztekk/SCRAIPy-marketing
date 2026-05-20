@@ -166,19 +166,23 @@ with tab_entreprises:
         t_status_opts = ["Tous"] + cached_query(
             "SELECT DISTINCT status FROM targets ORDER BY status"
         )["status"].tolist()
-        target_status = st.selectbox("Statut", t_status_opts, key="t_status")
+        target_status = st.selectbox("Statut", t_status_opts, key="t_status",
+                                      help="confirmed = entreprise validée dans le périmètre\nto_confirm = en attente de validation\nrejected = hors périmètre")
     with col2:
         naf_opts = ["Tous"] + cached_query(
             "SELECT DISTINCT naf_code FROM targets WHERE naf_code IS NOT NULL ORDER BY naf_code"
         )["naf_code"].tolist()
-        target_naf = st.selectbox("Code NAF", naf_opts, key="t_naf")
+        target_naf = st.selectbox("Code NAF", naf_opts, key="t_naf",
+                                   help="Code d'activité INSEE (ex: 35.11Z = production d'électricité, 64.19Z = banques)")
     with col3:
         bracket_opts = ["Tous"] + cached_query(
             "SELECT DISTINCT headcount_bracket FROM targets WHERE headcount_bracket IS NOT NULL ORDER BY headcount_bracket"
         )["headcount_bracket"].tolist()
-        target_bracket = st.selectbox("Tranche effectif", bracket_opts, key="t_bracket")
+        target_bracket = st.selectbox("Tranche effectif", bracket_opts, key="t_bracket",
+                                       help="Tranche INSEE d'effectif salarié (ex: 5001_10000 = entre 5 000 et 10 000 salariés)")
     with col4:
-        target_search = st.text_input("Recherche nom / SIREN", placeholder="ex: EDF, 552081317…")
+        target_search = st.text_input("Recherche nom / SIREN", placeholder="ex: EDF, 552081317…",
+                                       help="Recherche par nom d'entreprise (partiel) ou SIREN exact à 9 chiffres")
 
     _t_fixed = ["1=1"]
     _t_dynamic: list[str] = []
@@ -233,43 +237,84 @@ with tab_entreprises:
 with tab_contacts:
     # Groupe 1 : Statuts
     with st.container(border=True):
-        _hc, _mc = st.columns([5, 1])
+        _hc, _mc, _pc = st.columns([4, 1, 1])
         _hc.markdown("##### Groupe 1 — Statuts CSE / Syndicat")
         g1_mode = _mc.radio("Mode G1", ["ET", "OU"], horizontal=True, key="ql_g1_mode",
                              label_visibility="collapsed")
+        with _pc.popover("ℹ️"):
+            st.markdown("""
+**Mode ET** : tous les critères du groupe doivent correspondre.
+**Mode OU** : au moins un suffit.
+
+**Exemples :**
+- `cse=oui` + `union=oui` en **OU** → élus CSE *ou* syndiqués (les deux)
+- `cse=oui` + `Instance=CSEC` en **ET** → élus au CSE central uniquement
+""")
         _c1, _c2, _c3, _c4 = st.columns(4)
-        cse_f     = _c1.selectbox("cse_status",   ["Tous", "oui", "non", "inconnu"], key="ql_cse")
-        union_f   = _c2.selectbox("union_status",  ["Tous", "oui", "non", "inconnu"], key="ql_union")
-        cse_level_f = _c3.selectbox("Instance CSE", ["Tous", "CSE", "CSEC", "(vide)"], key="ql_lvl")
+        cse_f = _c1.selectbox("cse_status", ["Tous", "oui", "non", "inconnu"], key="ql_cse",
+                               help="oui = élu·e confirmé·e au CSE\nnon = pas élu·e\ninconnu = statut non confirmé dans la source")
+        union_f = _c2.selectbox("union_status", ["Tous", "oui", "non", "inconnu"], key="ql_union",
+                                 help="oui = syndiqué·e confirmé·e\nnon = non syndiqué·e\ninconnu = non confirmé dans la source")
+        cse_level_f = _c3.selectbox("Instance CSE", ["Tous", "CSE", "CSEC", "(vide)"], key="ql_lvl",
+                                     help="CSE = comité d'établissement\nCSEC = CSE central (niveau groupe)")
         union_name_opts = ["Tous", "(vide)"] + cached_query(
             "SELECT DISTINCT union_name FROM qualified_leads WHERE union_name IS NOT NULL ORDER BY union_name"
         )["union_name"].tolist()
-        union_name_f = _c4.selectbox("Syndicat", union_name_opts, key="ql_un")
+        union_name_f = _c4.selectbox("Syndicat", union_name_opts, key="ql_un",
+                                      help="Filtrer par organisation syndicale (CFDT, CGT, FO, CFE-CGC…)")
 
-    _sp1, _ic, _sp2 = st.columns([2, 2, 2])
+    _sp1, _ic, _sp2, _ipc = st.columns([2, 2, 1, 1])
     inter_mode = _ic.radio(
         "Combiner les groupes avec :", ["ET", "OU"], horizontal=True, key="ql_inter",
-        help="Opérateur entre Groupe 1 (Statuts) et Groupe 2 (Coordonnées).",
     )
+    with _ipc.popover("ℹ️"):
+        st.markdown("""
+**ET** : les deux groupes doivent être satisfaits simultanément.
+**OU** : satisfaire l'un *ou* l'autre suffit.
+
+**Exemples concrets :**
+
+| Objectif | G1 | inter | G2 |
+|---|---|---|---|
+| Élus CSE joignables | cse=oui | **ET** | email ✓ |
+| Quelqu'un qu'on peut contacter, peu importe le statut | *(vide)* | — | email OU phone |
+| Élus CSE ou syndiqués avec coordonnées | cse OU union | **ET** | email OU phone |
+""")
 
     # Groupe 2 : Coordonnées
     with st.container(border=True):
-        _hc2, _mc2 = st.columns([5, 1])
+        _hc2, _mc2, _pc2 = st.columns([4, 1, 1])
         _hc2.markdown("##### Groupe 2 — Coordonnées")
         g2_mode = _mc2.radio("Mode G2", ["ET", "OU"], horizontal=True, key="ql_g2_mode",
                               label_visibility="collapsed")
-        _c1, _c2, _c3 = st.columns(3)
-        has_email = _c1.checkbox("email présent", key="ql_he")
-        has_phone = _c2.checkbox("phone présent", key="ql_hp")
-        has_name  = _c3.checkbox("nom présent",   key="ql_hn")
+        with _pc2.popover("ℹ️"):
+            st.markdown("""
+**Mode ET** : doit avoir *tous* les éléments cochés.
+**Mode OU** : avoir *au moins un* suffit.
 
-    st.markdown("**Contexte** *(toujours ET)*")
+- Email **ET** phone → contacts joignables par les deux canaux
+- Email **OU** phone → contacts joignables par au moins un canal
+""")
+        _c1, _c2, _c3 = st.columns(3)
+        has_email = _c1.checkbox("email présent", key="ql_he",
+                                  help="N'afficher que les contacts avec une adresse email connue")
+        has_phone = _c2.checkbox("phone présent", key="ql_hp",
+                                  help="N'afficher que les contacts avec un numéro de téléphone connu")
+        has_name  = _c3.checkbox("nom présent",   key="ql_hn",
+                                  help="N'afficher que les contacts dont le prénom ou nom est renseigné")
+
+    st.markdown("**Contexte** *(toujours ET, indépendamment des groupes)*")
     _r2c1, _r2c2, _r2c3, _r2c4 = st.columns(4)
-    siren_f          = _r2c1.text_input("SIREN entreprise", key="ql_siren")
-    name_search      = _r2c2.text_input("Nom / email contient", key="ql_name")
-    min_ev           = _r2c3.number_input("Min sources", min_value=0, max_value=20, value=0, step=1, key="ql_minev")
-    source_max_years = _r2c4.number_input("Source < X ans (0=off)", min_value=0, max_value=20, value=0, step=1, key="ql_freshness")
-    limit_ql         = st.number_input("Limite résultats", min_value=50, max_value=5000, value=500, step=50, key="ql_lim")
+    siren_f          = _r2c1.text_input("SIREN entreprise", key="ql_siren",
+                                         help="SIREN à 9 chiffres — restreint les résultats à une seule entreprise")
+    name_search      = _r2c2.text_input("Nom / email contient", key="ql_name",
+                                         help="Recherche libre sur prénom, nom de famille, email ou raison sociale")
+    min_ev           = _r2c3.number_input("Min sources", min_value=0, max_value=20, value=0, step=1, key="ql_minev",
+                                          help="Nombre minimum de sources ayant identifié ce contact. Plus élevé = plus fiable. Recommandé : 2+")
+    source_max_years = _r2c4.number_input("Source < X ans (0=off)", min_value=0, max_value=20, value=0, step=1, key="ql_freshness",
+                                          help="Exclure les contacts dont toutes les sources datent de plus de X ans. 0 = pas de filtre de date.")
+    limit_ql         = st.number_input("Limite résultats", min_value=50, max_value=5000, value=500, step=50, key="ql_lim",
+                                       help="Nombre max de lignes affichées. Si 'Total filtres' > cette valeur, augmenter ici avant d'exporter.")
 
     # Build WHERE
     where: list[str] = ["ql.status != 'merged'"]
@@ -405,9 +450,21 @@ with tab_contacts:
         sel_id = str(df_ql.iloc[event.selection.rows[0]]["id"])
 
     st.divider()
+    _cap_col, _pop_col = st.columns([7, 1])
     if not sel_id:
-        st.caption("👆 Clique une ligne pour voir les détails et les sources du contact")
-    else:
+        _cap_col.caption("👆 Clique une ligne pour voir les détails et les sources du contact")
+    with _pop_col.popover("ℹ️"):
+        st.markdown("""
+**L'inspecteur affiche :**
+- Coordonnées complètes (email, téléphone, statut CSE/syndicat, mandat)
+- Entreprise avec niveau de confiance
+- Chaque source ayant permis d'identifier ce contact
+
+**Dans chaque source**, un extrait du document original est affiché avec le **nom surligné en jaune** — pour vérifier le contexte (page web, PDF de résultats électoraux, liste syndicale…).
+
+> Le champ `nb_sources` dans le tableau = nombre de sources distinctes. Un contact avec 3+ sources est très probablement correct.
+""")
+    if sel_id:
         full = cached_query(
             """
             SELECT ql.first_name, ql.last_name, ql.email, ql.phone, ql.role,
