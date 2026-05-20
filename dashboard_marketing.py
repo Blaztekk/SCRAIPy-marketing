@@ -285,7 +285,7 @@ with tab_contacts:
     with st.container(border=True):
         _hc2, _mc2, _pc2 = st.columns([4, 1, 1])
         _hc2.markdown("##### Groupe 2 — Coordonnées")
-        g2_mode = _mc2.radio("Mode G2", ["ET", "OU"], horizontal=True, key="ql_g2_mode",
+        g2_mode = _mc2.radio("Mode G2", ["ET", "OU"], index=1, horizontal=True, key="ql_g2_mode",
                               label_visibility="collapsed")
         with _pc2.popover("ℹ️"):
             st.markdown("""
@@ -296,11 +296,11 @@ with tab_contacts:
 - Email **OU** phone → contacts joignables par au moins un canal
 """)
         _c1, _c2, _c3 = st.columns(3)
-        has_email = _c1.checkbox("email présent", key="ql_he",
+        has_email = _c1.checkbox("email présent", value=True, key="ql_he",
                                   help="N'afficher que les contacts avec une adresse email connue")
-        has_phone = _c2.checkbox("phone présent", key="ql_hp",
+        has_phone = _c2.checkbox("phone présent", value=True, key="ql_hp",
                                   help="N'afficher que les contacts avec un numéro de téléphone connu")
-        has_name  = _c3.checkbox("nom présent",   key="ql_hn",
+        has_name  = _c3.checkbox("nom présent",   value=True, key="ql_hn",
                                   help="N'afficher que les contacts dont le prénom ou nom est renseigné")
 
     st.markdown("**Contexte** *(toujours ET, indépendamment des groupes)*")
