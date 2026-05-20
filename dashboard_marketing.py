@@ -238,9 +238,14 @@ with tab_contacts:
 
     sub_explorer, sub_mail, sub_call = st.tabs(["🔍 Explorer", "📧 Rdy mail", "📞 Rdy call"])
 
-    # Score composite : CSE(10) + email(5) + phone(3) + sources min(5) + fraîcheur 2ans(2)
+    # Score composite : CSE(10) + rôle bureau(7)/titulaire(3) + email(5) + phone(3) + sources min(5) + fraîcheur 2ans(2)
     _SCORE_SQL = """
         CASE WHEN ql.cse_status = 'oui' THEN 10 ELSE 0 END
+        + CASE
+            WHEN ql.role ILIKE '%secrétaire%' OR ql.role ILIKE '%trésorier%' OR ql.role ILIKE '%président%' THEN 7
+            WHEN ql.role ILIKE '%titulaire%' OR ql.role ILIKE '%membre%' THEN 3
+            ELSE 0
+          END
         + CASE WHEN ql.email IS NOT NULL THEN 5 ELSE 0 END
         + CASE WHEN ql.phone IS NOT NULL THEN 3 ELSE 0 END
         + LEAST(jsonb_array_length(ql.evidences::jsonb), 5)
@@ -599,7 +604,24 @@ with tab_contacts:
     # ── Rdy mail ─────────────────────────────────────────────────────────────
 
     with sub_mail:
-        st.caption("Leads avec email confirmé — triés par score composite (CSE+sources+fraîcheur)")
+        _hdr_m, _info_m = st.columns([8, 1])
+        _hdr_m.caption("Leads avec email confirmé — triés par score composite")
+        with _info_m.popover("📊"):
+            st.markdown("""
+**Score composite — max 32 pts**
+
+| Critère | Points |
+|---|---|
+| `cse_status = oui` | +10 |
+| Rôle **bureau** (Secrétaire / Trésorier / Président) | +7 |
+| Rôle **titulaire** ou membre | +3 |
+| Email présent | +5 |
+| Téléphone présent | +3 |
+| Nb sources (plafonné à 5) | +1 à +5 |
+| Source < 2 ans | +2 |
+
+> Score élevé = décideur joignable avec données fraîches. Commencez par le haut.
+""")
 
         mail_seg = st.radio(
             "Filtre", ["Tous", "CSE uniquement", "Syndiqué uniquement"],
@@ -655,7 +677,24 @@ with tab_contacts:
     # ── Rdy call ─────────────────────────────────────────────────────────────
 
     with sub_call:
-        st.caption("Leads avec téléphone confirmé — triés par score composite (CSE+sources+fraîcheur)")
+        _hdr_c, _info_c = st.columns([8, 1])
+        _hdr_c.caption("Leads avec téléphone confirmé — triés par score composite")
+        with _info_c.popover("📊"):
+            st.markdown("""
+**Score composite — max 32 pts**
+
+| Critère | Points |
+|---|---|
+| `cse_status = oui` | +10 |
+| Rôle **bureau** (Secrétaire / Trésorier / Président) | +7 |
+| Rôle **titulaire** ou membre | +3 |
+| Email présent | +5 |
+| Téléphone présent | +3 |
+| Nb sources (plafonné à 5) | +1 à +5 |
+| Source < 2 ans | +2 |
+
+> Score élevé = décideur joignable avec données fraîches. Commencez par le haut.
+""")
 
         call_seg = st.radio(
             "Filtre", ["Tous", "CSE uniquement", "Syndiqué uniquement"],
