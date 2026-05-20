@@ -1,9 +1,30 @@
 """SCRAIPy — Marketing Explorer (read-only).
 
-Deploy on Streamlit Community Cloud.
-Set DATABASE_URL in App Settings > Secrets:
+Ce fichier est le dashboard public pour l'équipe marketing.
+Il vit dans DEUX endroits :
+  - d:\\Projets\\SCRAIPy\\dashboard_marketing.py        ← source de travail (modifier ici)
+  - d:\\Projets\\SCRAIPy-marketing\\dashboard_marketing.py ← repo public déployé sur Streamlit Cloud
+
+══ WORKFLOW DE MISE À JOUR ══════════════════════════════════════
+
+1. Modifier ce fichier dans SCRAIPy (source de vérité)
+2. Copier vers le repo marketing :
+       copy "d:\\Projets\\SCRAIPy\\dashboard_marketing.py" "d:\\Projets\\SCRAIPy-marketing\\dashboard_marketing.py"
+3. Commiter + pusher le repo marketing :
+       cd d:\\Projets\\SCRAIPy-marketing
+       git add dashboard_marketing.py
+       git commit -m "update: dashboard marketing"
+       git push
+4. Streamlit Cloud redéploie automatiquement (~1 min).
+
+══ DÉPLOIEMENT STREAMLIT CLOUD ════════════════════════════════
+
+Repo public  : https://github.com/Blaztekk/SCRAIPy-marketing
+App settings > Secrets :
     [secrets]
-    DATABASE_URL = "postgresql+psycopg://..."
+    DATABASE_URL = "postgresql+psycopg://scraipy_marketing:MOT_DE_PASSE@..."
+
+User DB read-only : scraipy_marketing (SELECT uniquement sur toutes les tables)
 """
 
 from __future__ import annotations
