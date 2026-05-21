@@ -244,17 +244,19 @@ with tab_contacts:
         )["union_name"].tolist()
         campaign_union   = _cu.selectbox("Syndicat cible (+3 pts)", _union_names_camp, key="camp_union",
                                          help="Contacts de ce syndicat : +3 pts dans le score")
-        campaign_company = _cc.text_input("Entreprise cible (+3 pts)", key="camp_company",
-                                          placeholder="ex: Orange",
-                                          help="Contacts de cette entreprise : +3 pts dans le score")
+        _company_names_camp = ["(aucune)"] + cached_query(
+            "SELECT DISTINCT canonical_label FROM entities ORDER BY canonical_label"
+        )["canonical_label"].tolist()
+        campaign_company = _cc.selectbox("Entreprise cible (+3 pts)", _company_names_camp, key="camp_company",
+                                         help="Contacts de cette entreprise : +3 pts dans le score")
 
     _camp_union_sql   = (
         f"+ CASE WHEN ql.union_name ILIKE '%{campaign_union.replace(chr(39), chr(39)*2)}%' THEN 3 ELSE 0 END"
         if campaign_union != "(aucun)" else ""
     )
     _camp_company_sql = (
-        f"+ CASE WHEN e.canonical_label ILIKE '%{campaign_company.strip().replace(chr(39), chr(39)*2)}%' THEN 3 ELSE 0 END"
-        if campaign_company.strip() else ""
+        f"+ CASE WHEN e.canonical_label ILIKE '%{campaign_company.replace(chr(39), chr(39)*2)}%' THEN 3 ELSE 0 END"
+        if campaign_company != "(aucune)" else ""
     )
 
     sub_explorer, sub_mail, sub_call = st.tabs(["🔍 Explorer", "📧 Rdy mail", "📞 Rdy call"])
@@ -278,9 +280,9 @@ with tab_contacts:
 
     _camp_rows = (
         (f"\n| Syndicat **{campaign_union}** *(campagne)* | +3 |" if campaign_union != "(aucun)" else "")
-        + (f"\n| Entreprise **{campaign_company.strip()}** *(campagne)* | +3 |" if campaign_company.strip() else "")
+        + (f"\n| Entreprise **{campaign_company}** *(campagne)* | +3 |" if campaign_company != "(aucune)" else "")
     )
-    _score_max = 34 + (3 if campaign_union != "(aucun)" else 0) + (3 if campaign_company.strip() else 0)
+    _score_max = 34 + (3 if campaign_union != "(aucun)" else 0) + (3 if campaign_company != "(aucune)" else 0)
     _score_popover_md = f"""**Score composite — max {_score_max} pts**
 
 | Critère | Points |
