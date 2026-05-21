@@ -101,6 +101,21 @@ with st.sidebar:
         st.rerun()
     st.caption("Données rafraîchies toutes les 2 min.")
 
+    st.divider()
+    st.subheader("🎯 Campagne")
+    st.caption("Bonus +3 pts dans Rdy mail / Rdy call")
+    _union_names_camp = ["(aucun)"] + cached_query(
+        "SELECT DISTINCT union_name FROM qualified_leads WHERE union_name IS NOT NULL ORDER BY union_name"
+    )["union_name"].tolist()
+    campaign_union = st.selectbox("Syndicat cible", _union_names_camp, key="camp_union",
+                                   help="+3 pts pour les contacts de ce syndicat")
+    _company_names_camp = ["(aucune)"] + cached_query(
+        "SELECT DISTINCT attributes->>'employeur' AS employeur FROM entities "
+        "WHERE attributes->>'employeur' IS NOT NULL ORDER BY employeur"
+    )["employeur"].tolist()
+    campaign_company = st.selectbox("Entreprise cible", _company_names_camp, key="camp_company",
+                                     help="+3 pts pour les contacts de cette entreprise")
+
 proj_clause = "" if project_filter == "Tous" else f" AND project = '{project_filter}'"
 ql_proj_clause = "" if project_filter == "Tous" else f" AND ql.project = '{project_filter}'"
 
@@ -236,26 +251,12 @@ with tab_entreprises:
 
 with tab_contacts:
 
-    # ── Contexte campagne ────────────────────────────────────────────────────
-    with st.expander("🎯 Contexte campagne — bonus scoring", expanded=False):
-        _cu, _cc = st.columns(2)
-        _union_names_camp = ["(aucun)"] + cached_query(
-            "SELECT DISTINCT union_name FROM qualified_leads WHERE union_name IS NOT NULL ORDER BY union_name"
-        )["union_name"].tolist()
-        campaign_union   = _cu.selectbox("Syndicat cible (+3 pts)", _union_names_camp, key="camp_union",
-                                         help="Contacts de ce syndicat : +3 pts dans le score")
-        _company_names_camp = ["(aucune)"] + cached_query(
-            "SELECT DISTINCT canonical_label FROM entities ORDER BY canonical_label"
-        )["canonical_label"].tolist()
-        campaign_company = _cc.selectbox("Entreprise cible (+3 pts)", _company_names_camp, key="camp_company",
-                                         help="Contacts de cette entreprise : +3 pts dans le score")
-
     _camp_union_sql   = (
         f"+ CASE WHEN ql.union_name ILIKE '%{campaign_union.replace(chr(39), chr(39)*2)}%' THEN 3 ELSE 0 END"
         if campaign_union != "(aucun)" else ""
     )
     _camp_company_sql = (
-        f"+ CASE WHEN e.canonical_label ILIKE '%{campaign_company.replace(chr(39), chr(39)*2)}%' THEN 3 ELSE 0 END"
+        f"+ CASE WHEN e.attributes->>'employeur' ILIKE '%{campaign_company.replace(chr(39), chr(39)*2)}%' THEN 3 ELSE 0 END"
         if campaign_company != "(aucune)" else ""
     )
 
