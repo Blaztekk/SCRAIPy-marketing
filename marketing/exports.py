@@ -187,7 +187,7 @@ def _export_dialog(
     st.divider()
 
     if mode == MODE_EXPLORE:
-        st.info("🧪 **Mode test** — aucun lead ne sera marqué en base.")
+        st.warning("🧪 **Mode test** — aucun lead ne sera marqué en base.")
         col_dl, col_cancel = st.columns([2, 1])
         col_dl.download_button(
             f"⬇️ Télécharger ({len(top_n)} lignes)",
@@ -209,7 +209,7 @@ def _export_dialog(
         st.warning(
             f"⚠️ **Mode Travailler** — les {len(lead_ids)} leads seront marqués "
             f"`{channel}=exporté` en base et exclus par défaut des futurs "
-            "exports de ce canal. Action irréversible (re-export = écrasement)."
+            "exports de ce canal."
         )
         col_confirm, col_cancel = st.columns([2, 1])
         if col_confirm.button(
