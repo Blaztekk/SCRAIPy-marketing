@@ -180,10 +180,6 @@ def _export_dialog(
         f"· Sélection : top {len(top_n)}"
     )
 
-    sample_cols = [c for c in ("prénom", "nom", "score", "entreprise") if c in top_n.columns]
-    with st.expander(f"👁️ Aperçu (top 5 sur {len(top_n)})", expanded=False):
-        st.dataframe(top_n[sample_cols].head(5), use_container_width=True, hide_index=True)
-
     st.divider()
 
     if mode == MODE_EXPLORE:
