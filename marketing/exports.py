@@ -21,6 +21,9 @@ from shared.db import get_engine
 
 VALID_CHANNELS = ("email", "call")
 
+MODE_EXPLORE = "🧪 Explorer / tester (no tag)"
+MODE_WORK = "🎯 Travailler les contacts (tag définitif)"
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_excluded_ids(channel: str) -> set[UUID]:
@@ -72,7 +75,6 @@ def record_export(lead_ids: list[UUID] | list[str], channel: str) -> UUID:
     return batch_id
 
 
-@st.fragment
 def render_export_block(
     df: pd.DataFrame,
     *,
@@ -82,10 +84,14 @@ def render_export_block(
 ) -> None:
     """Render the campaign export UI block under a Rdy mail / Rdy call table.
 
+    Two modes :
+      - Explorer / tester : download CSV only, no DB write.
+      - Travailler        : click → modal dialog with récap + confirm/cancel.
+                            Tag posed only on confirm.
+
     Expects `df` already sorted by score DESC and to contain `id_col`
     (QualifiedLead UUID, dropped before display/CSV). The "exclude already
-    exported" toggle pre-checks the SAME channel only (call tab doesn't
-    pre-exclude email and vice versa).
+    exported" toggle pre-checks the SAME channel only.
     """
     if channel not in VALID_CHANNELS:
         raise ValueError(f"channel must be one of {VALID_CHANNELS}, got {channel!r}")
@@ -96,7 +102,7 @@ def render_export_block(
     excluded = get_excluded_ids(channel)
     df_pool = df[~df[id_col].isin(excluded)] if excluded else df
 
-    c1, c2, c3 = st.columns([2, 2, 3])
+    c1, c2 = st.columns([3, 2])
     exclude = c1.checkbox(
         f"Exclure déjà exportés ({channel}) — {len(excluded)} leads",
         value=True,
@@ -112,54 +118,136 @@ def render_export_block(
         step=10,
         key=f"{key_prefix}_n",
     )
-    apply_tag = c3.radio(
-        "Marquer comme exportés ?",
-        ["Oui", "Non"],
-        index=0,
-        horizontal=True,
-        key=f"{key_prefix}_tag",
-    )
 
-    top = pool.head(int(n)).drop(columns=[id_col])
-    lead_ids = pool.head(int(n))[id_col].tolist()
+    top_n = pool.head(int(n))
+    csv_df = top_n.drop(columns=[id_col])
+    lead_ids = top_n[id_col].tolist()
     st.caption(
         f"Pool : {len(pool)} leads ({'hors déjà exportés' if exclude else 'tous'}) "
-        f"· Export : top {len(top)}"
+        f"· Export : top {len(top_n)}"
     )
 
-    csv = top.to_csv(index=False).encode("utf-8")
+    csv_bytes = csv_df.to_csv(index=False).encode("utf-8")
     fname = f"rdy_{channel}.csv"
 
-    if apply_tag == "Oui":
-        col_a, col_b = st.columns([1, 1])
-        if col_a.button(
-            f"📌 Tagger {len(lead_ids)} leads + préparer CSV",
-            key=f"{key_prefix}_tag_btn",
-            type="primary",
-            disabled=not lead_ids,
-        ):
-            batch_id = record_export(lead_ids, channel)
-            st.session_state[f"{key_prefix}_csv"] = csv
-            st.session_state[f"{key_prefix}_fname"] = fname
-            st.session_state[f"{key_prefix}_batch"] = str(batch_id)
-            st.success(f"{len(lead_ids)} leads tagués · batch {batch_id}")
-            st.rerun()
-        if st.session_state.get(f"{key_prefix}_csv"):
-            col_b.download_button(
-                f"⬇️ Télécharger {st.session_state[f'{key_prefix}_fname']}",
-                st.session_state[f"{key_prefix}_csv"],
-                st.session_state[f"{key_prefix}_fname"],
-                "text/csv",
-                key=f"{key_prefix}_dl_tagged",
-            )
-            st.caption(f"batch_id : `{st.session_state[f'{key_prefix}_batch']}`")
-    else:
-        st.download_button(
-            f"⬇️ Télécharger sans tag — top {len(top)}",
-            csv,
-            fname,
-            "text/csv",
-            type="primary",
-            key=f"{key_prefix}_dl_notag",
-            disabled=top.empty,
+    with st.container(border=True):
+        mode = st.radio(
+            "Mode",
+            [MODE_EXPLORE, MODE_WORK],
+            index=0,
+            key=f"{key_prefix}_mode",
+            help=(
+                "Explorer : télécharge le CSV sans rien marquer en base — "
+                "pour inspecter, partager un échantillon, tester un ciblage.\n\n"
+                "Travailler : tag les leads comme exportés (canal "
+                f"{channel}). Ils seront exclus par défaut des futurs exports "
+                "du même canal. À utiliser quand on s'apprête à les contacter."
+            ),
         )
+
+        if mode == MODE_EXPLORE:
+            st.download_button(
+                f"⬇️ Télécharger sans tag — top {len(top_n)}",
+                csv_bytes,
+                fname,
+                "text/csv",
+                type="primary",
+                key=f"{key_prefix}_dl_explore",
+                disabled=top_n.empty,
+            )
+        else:
+            st.warning(
+                "⚠️ **Mode Travailler — tag définitif.** "
+                f"Une fois validés, les {len(lead_ids)} leads seront marqués "
+                f"`{channel}=exporté` en base et exclus par défaut des futurs "
+                "exports de ce canal. La confirmation passe par une pop-up."
+            )
+            if st.button(
+                f"🎯 Tagger {len(lead_ids)} leads + préparer CSV",
+                key=f"{key_prefix}_open_dialog",
+                type="primary",
+                disabled=not lead_ids,
+            ):
+                _confirm_export_dialog(
+                    pool=pool,
+                    top_n=top_n,
+                    lead_ids=lead_ids,
+                    channel=channel,
+                    csv_bytes=csv_bytes,
+                    fname=fname,
+                    key_prefix=key_prefix,
+                )
+
+    if st.session_state.get(f"{key_prefix}_csv"):
+        st.success(
+            f"✅ {st.session_state[f'{key_prefix}_count']} leads tagués · "
+            f"batch `{st.session_state[f'{key_prefix}_batch']}`"
+        )
+        st.download_button(
+            f"⬇️ Télécharger {st.session_state[f'{key_prefix}_fname']}",
+            st.session_state[f"{key_prefix}_csv"],
+            st.session_state[f"{key_prefix}_fname"],
+            "text/csv",
+            key=f"{key_prefix}_dl_tagged",
+        )
+
+
+@st.dialog("⚠️ Confirmer l'export campagne", width="large")
+def _confirm_export_dialog(
+    *,
+    pool: pd.DataFrame,
+    top_n: pd.DataFrame,
+    lead_ids: list,
+    channel: str,
+    csv_bytes: bytes,
+    fname: str,
+    key_prefix: str,
+) -> None:
+    """Modal récap + confirm/cancel. record_export only on confirm."""
+    st.markdown(f"### Canal : **`{channel}`**")
+    score_col = "score" if "score" in top_n.columns else None
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Leads à tagger", len(lead_ids))
+    m2.metric("Pool dispo", len(pool))
+    if score_col:
+        m3.metric(
+            "Score min — max",
+            f"{int(top_n[score_col].min())} — {int(top_n[score_col].max())}",
+        )
+
+    st.markdown("**Effet du tag :**")
+    st.markdown(
+        f"- Ces leads seront marqués `{channel}=exporté` (table `lead_exports`)\n"
+        "- Exclus par défaut des futurs exports du même canal\n"
+        "- Re-tag = écrasement (même lead × même canal = une seule ligne)\n"
+        "- Aucun effet sur l'autre canal"
+    )
+
+    sample_cols = [c for c in ("prénom", "nom", "score", "entreprise") if c in top_n.columns]
+    st.markdown("**🥇 Top 3 du batch :**")
+    st.dataframe(top_n[sample_cols].head(3), use_container_width=True, hide_index=True)
+    if len(top_n) > 3:
+        st.markdown("**📉 Bottom 3 du batch :**")
+        st.dataframe(top_n[sample_cols].tail(3), use_container_width=True, hide_index=True)
+
+    st.divider()
+    col_confirm, col_cancel = st.columns([1, 1])
+    if col_confirm.button(
+        "✅ Confirmer le tag",
+        type="primary",
+        key=f"{key_prefix}_confirm",
+        use_container_width=True,
+    ):
+        batch_id = record_export(lead_ids, channel)
+        st.session_state[f"{key_prefix}_csv"] = csv_bytes
+        st.session_state[f"{key_prefix}_fname"] = fname
+        st.session_state[f"{key_prefix}_batch"] = str(batch_id)
+        st.session_state[f"{key_prefix}_count"] = len(lead_ids)
+        st.rerun()
+    if col_cancel.button(
+        "❌ Annuler",
+        key=f"{key_prefix}_cancel",
+        use_container_width=True,
+    ):
+        st.rerun()
