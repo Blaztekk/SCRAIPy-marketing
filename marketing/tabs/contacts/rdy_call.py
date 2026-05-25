@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import streamlit as st
 
+from marketing.exports import render_export_block
 from marketing.scoring import (
     build_score_popover_md,
     build_score_sql,
     render_campaign_indicator,
 )
+
+CHANNEL = "call"
 
 
 def render(cached_query, project_filter: str) -> None:
@@ -26,6 +29,9 @@ def render(cached_query, project_filter: str) -> None:
         "Filtre", ["Tous", "CSE uniquement", "Syndiqué uniquement"],
         horizontal=True, key="rc_seg",
     )
+    also_email = st.checkbox(
+        "Possède aussi un email", value=False, key="rc_also_email"
+    )
 
     where = ["ql.status != 'merged'", "ql.phone IS NOT NULL"]
     if project_filter != "Tous":
@@ -34,12 +40,15 @@ def render(cached_query, project_filter: str) -> None:
         where.append("ql.cse_status = 'oui'")
     elif seg == "Syndiqué uniquement":
         where.append("ql.union_status = 'oui'")
+    if also_email:
+        where.append("ql.email IS NOT NULL")
 
     where_sql = " AND ".join(where)
     score_sql = build_score_sql()
 
     df = cached_query(f"""
         SELECT
+            ql.id                                        AS _lead_id,
             ({score_sql})                                AS score,
             ql.first_name                                AS prénom,
             ql.last_name                                 AS nom,
@@ -67,9 +76,11 @@ def render(cached_query, project_filter: str) -> None:
         m3.metric("Aussi email", int(df["email"].notna().sum()))
         m4.metric("Score moyen", round(float(df["score"].mean()), 1))
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(
+        df.drop(columns=["_lead_id"]),
+        use_container_width=True,
+        hide_index=True,
+    )
 
     if not df.empty:
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Export CSV — Rdy call", csv, "rdy_call.csv", "text/csv",
-                           type="primary")
+        render_export_block(df, channel=CHANNEL, key_prefix="rc")
