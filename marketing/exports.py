@@ -22,8 +22,13 @@ from shared.db import get_engine
 VALID_CHANNELS = ("email", "call")
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_excluded_ids(channel: str) -> set[UUID]:
-    """Return set of QualifiedLead ids already tagged on `channel`."""
+    """Return set of QualifiedLead ids already tagged on `channel`.
+
+    Cached 60s. Invalidated by record_export() via .clear() so a fresh tag
+    appears in the next exclusion list without waiting for TTL.
+    """
     if channel not in VALID_CHANNELS:
         raise ValueError(f"channel must be one of {VALID_CHANNELS}, got {channel!r}")
     with get_engine().connect() as conn:
@@ -63,9 +68,11 @@ def record_export(lead_ids: list[UUID] | list[str], channel: str) -> UUID:
                 for lid in lead_ids
             ],
         )
+    get_excluded_ids.clear()
     return batch_id
 
 
+@st.fragment
 def render_export_block(
     df: pd.DataFrame,
     *,
