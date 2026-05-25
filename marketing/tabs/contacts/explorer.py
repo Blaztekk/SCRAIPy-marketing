@@ -212,11 +212,6 @@ def render(scalar, cached_query, query, project_filter: str) -> None:
         },
     )
 
-    if not df_ql.empty:
-        csv = df_ql.drop(columns=["id"]).to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Export CSV contacts", csv, "contacts_scraipy.csv", "text/csv",
-                           type="primary")
-
     # ── Inspecteur contact ────────────────────────────────────────────────────
     sel_id = ""
     if event.selection and event.selection.rows:
