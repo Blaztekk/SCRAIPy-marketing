@@ -159,7 +159,7 @@ def _export_dialog(
     mode = st.radio(
         "Mode",
         [MODE_EXPLORE, MODE_WORK],
-        index=0,
+        index=1,
         key=f"{key_prefix}_dlg_mode",
         help=(
             "Explorer : télécharge le CSV sans rien marquer en base — "
