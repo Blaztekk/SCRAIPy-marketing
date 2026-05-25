@@ -184,18 +184,7 @@ def _export_dialog(
 
     if mode == MODE_EXPLORE:
         st.warning("🧪 **Mode test** — aucun lead ne sera marqué en base.")
-        col_dl, col_cancel = st.columns([2, 1])
-        col_dl.download_button(
-            f"⬇️ Télécharger ({len(top_n)} lignes)",
-            csv_bytes,
-            fname,
-            "text/csv",
-            type="primary",
-            key=f"{key_prefix}_dlg_dl_explore",
-            disabled=top_n.empty,
-            use_container_width=True,
-        )
-        if col_cancel.button(
+        if st.button(
             "❌ Fermer",
             key=f"{key_prefix}_dlg_cancel_explore",
             use_container_width=True,
