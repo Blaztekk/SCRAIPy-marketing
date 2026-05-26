@@ -51,6 +51,15 @@ def compute_score(
     source_dt = pd.to_datetime(df["source_date"], utc=True, errors="coerce")
     fresh_score = (source_dt >= two_years_ago).astype(int) * 2
 
+    if "bouncer_status" in df.columns:
+        bouncer = df["bouncer_status"].fillna("").astype(str)
+        bouncer_penalty = (
+            (bouncer == "risky").astype(int) * -5
+            + (bouncer == "unknown").astype(int) * -3
+        )
+    else:
+        bouncer_penalty = 0
+
     score = (
         cse_score
         + role_score
@@ -59,6 +68,7 @@ def compute_score(
         + mobile_score
         + sources_score
         + fresh_score
+        + bouncer_penalty
     )
 
     if camp_union and camp_union != NONE_UNION:

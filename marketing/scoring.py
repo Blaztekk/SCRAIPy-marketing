@@ -57,6 +57,8 @@ def build_score_sql() -> str:
         + CASE WHEN ql.phone ILIKE '06%' OR ql.phone ILIKE '07%' THEN 2 ELSE 0 END
         + LEAST(jsonb_array_length(ql.evidences::jsonb), 5)
         + CASE WHEN ql.source_date >= NOW() - INTERVAL '2 years' THEN 2 ELSE 0 END
+        + CASE WHEN ql.meta->>'bouncer_status' = 'risky' THEN -5 ELSE 0 END
+        + CASE WHEN ql.meta->>'bouncer_status' = 'unknown' THEN -3 ELSE 0 END
         {camp_union_sql}
         {camp_company_sql}
     """
@@ -82,7 +84,9 @@ def build_score_popover_md() -> str:
 | Téléphone présent | +3 |
 | Téléphone **mobile** (06/07) | +2 |
 | Nb sources (plafonné à 5) | +1 à +5 |
-| Source < 2 ans | +2 |{rows}
+| Source < 2 ans | +2 |
+| Bouncer **risky** (SMTP douteux) | −5 |
+| Bouncer **unknown** (SMTP indéterminé) | −3 |{rows}
 
 > Score élevé = décideur joignable avec données fraîches. Commencez par le haut.
 """
