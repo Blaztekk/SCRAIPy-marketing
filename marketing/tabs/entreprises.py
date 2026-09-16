@@ -1,10 +1,20 @@
-"""Entreprises — filtres NAF / tranche / recherche, métriques, export CSV."""
+"""Entreprises — filtres NAF / tranche / recherche, métriques, export CSV.
+
+Deux exports : la liste d'entreprises filtrée, et les contacts qualifiés
+rattachés à ces mêmes entreprises (jointure sur `entities.attributes->>'siren'`).
+L'export contacts est en deux temps (bouton « charger » puis download) pour ne
+pas payer une requête Neon à chaque rerun de la page pendant le réglage des
+filtres.
+"""
 
 from __future__ import annotations
 
 import streamlit as st
 
 from shared.filters import build_group
+
+CONTACTS_STATE_KEY = "t_contacts_df"
+CONTACTS_SIG_KEY = "t_contacts_sig"
 
 
 def render(scalar, cached_query, project_filter: str) -> None:
@@ -77,6 +87,129 @@ def render(scalar, cached_query, project_filter: str) -> None:
 
     st.dataframe(df_t, use_container_width=True, hide_index=True)
 
-    if not df_t.empty:
-        csv = df_t.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Export CSV entreprises", csv, "entreprises.csv", "text/csv")
+    if df_t.empty:
+        return
+
+    sirens = sorted({
+        s for s in df_t["siren"].dropna().astype(str).str.strip()
+        if s.isdigit()
+    })
+
+    col_ent, col_ctc = st.columns(2)
+    csv = df_t.to_csv(index=False).encode("utf-8")
+    col_ent.download_button("⬇️ Export CSV entreprises", csv, "entreprises.csv", "text/csv",
+                            use_container_width=True)
+    load_clicked = col_ctc.button(
+        f"👥 Charger les contacts de ces {len(sirens)} entreprises",
+        key="t_load_contacts",
+        disabled=not sirens,
+        use_container_width=True,
+        help="Contacts qualifiés rattachés aux entreprises affichées ci-dessus. "
+             "Une requête au clic — pas à chaque changement de filtre.",
+    )
+
+    if target_total > len(df_t):
+        st.caption(
+            f"ℹ️ L'affichage est limité à {len(df_t)} entreprises sur {target_total} — "
+            "l'export contacts ne couvre que les entreprises listées ci-dessus."
+        )
+
+    _render_contacts_block(cached_query, project_filter, sirens, load_clicked)
+
+
+def _render_contacts_block(cached_query, project_filter: str, sirens: list[str],
+                           load_clicked: bool) -> None:
+    """Charge (au clic) et propose à l'export les contacts des SIREN affichés."""
+    sig = (project_filter, tuple(sirens))
+
+    if load_clicked:
+        st.session_state[CONTACTS_STATE_KEY] = _fetch_contacts(
+            cached_query, project_filter, sirens
+        )
+        st.session_state[CONTACTS_SIG_KEY] = sig
+
+    # Filtres modifiés depuis le chargement → on jette le résultat périmé.
+    if st.session_state.get(CONTACTS_SIG_KEY) != sig:
+        st.session_state.pop(CONTACTS_STATE_KEY, None)
+        st.session_state.pop(CONTACTS_SIG_KEY, None)
+        return
+
+    df_c = st.session_state.get(CONTACTS_STATE_KEY)
+    if df_c is None:
+        return
+
+    st.divider()
+    st.markdown("##### 👥 Contacts des entreprises filtrées")
+
+    if df_c.empty:
+        st.info("Aucun contact qualifié rattaché à ces entreprises.")
+        return
+
+    f1, f2 = st.columns(2)
+    only_email = f1.checkbox("Email présent uniquement", value=False, key="t_ctc_email")
+    only_cse = f2.checkbox("Élus CSE uniquement (cse_status=oui)", value=False, key="t_ctc_cse")
+    st.caption(
+        "Pool brut : tous les contacts rattachés, y compris `cse_status=inconnu` "
+        "(issus d'une extraction large, qualité variable). Cocher « Élus CSE uniquement » "
+        "pour ne garder que les mandats confirmés."
+    )
+
+    df_f = df_c
+    if only_email:
+        df_f = df_f[df_f["email"].notna()]
+    if only_cse:
+        df_f = df_f[df_f["cse_status"] == "oui"]
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Contacts", len(df_f))
+    m2.metric("cse=oui", int((df_f["cse_status"] == "oui").sum()))
+    m3.metric("avec email", int(df_f["email"].notna().sum()))
+    m4.metric("avec téléphone", int(df_f["phone"].notna().sum()))
+
+    st.dataframe(df_f, use_container_width=True, hide_index=True)
+
+    st.download_button(
+        f"⬇️ Export CSV contacts ({len(df_f)} lignes)",
+        df_f.to_csv(index=False).encode("utf-8"),
+        "contacts_entreprises.csv",
+        "text/csv",
+        type="primary",
+        disabled=df_f.empty,
+        key="t_ctc_dl",
+    )
+
+
+def _fetch_contacts(cached_query, project_filter: str, sirens: list[str]):
+    """Contacts qualifiés des SIREN donnés. `sirens` est garanti numérique."""
+    proj_clause = "" if project_filter == "Tous" else f" AND ql.project = '{project_filter}'"
+    in_list = "','".join(sirens)
+    return cached_query(f"""
+        SELECT
+            ql.first_name                                    AS prénom,
+            ql.last_name                                     AS nom,
+            ql.email,
+            ql.phone,
+            ql.role,
+            ql.cse_status,
+            ql.cse_level,
+            ql.union_status,
+            ql.union_name                                    AS syndicat,
+            ql.union_mandate,
+            e.attributes->>'employeur'                       AS entreprise,
+            e.attributes->>'siren'                           AS siren,
+            ql.source_date,
+            jsonb_array_length(ql.evidences::jsonb)          AS nb_sources,
+            (
+                SELECT elem->>'source_url'
+                FROM jsonb_array_elements(ql.evidences::jsonb) AS elem
+                WHERE elem->>'source_url' IS NOT NULL
+                LIMIT 1
+            ) AS source_url
+        FROM qualified_leads ql
+        JOIN entities e ON ql.entity_id = e.id
+        WHERE ql.status != 'merged'
+          AND COALESCE(ql.meta->>'name_suspicious', 'false') <> 'true'
+          AND e.attributes->>'siren' IN ('{in_list}')
+          {proj_clause}
+        ORDER BY entreprise, ql.cse_status = 'oui' DESC, nb_sources DESC
+    """)

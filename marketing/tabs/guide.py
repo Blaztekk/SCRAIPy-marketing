@@ -36,6 +36,16 @@ def render() -> None:
 **Mode ET / OU** : avec *ET* tous les filtres doivent correspondre ; avec *OU* un seul suffit.
 
 Le bouton **⬇️ Export CSV entreprises** télécharge la liste filtrée.
+
+Le bouton **👥 Charger les contacts de ces entreprises** récupère les contacts qualifiés
+rattachés aux entreprises affichées (même filtre projet), avec deux filtres rapides
+(email présent / élus CSE) puis **⬇️ Export CSV contacts**.
+Les contacts au nom suspect (artefacts d'extraction) sont exclus.
+
+> Le chargement se fait au clic, pas à chaque changement de filtre. Si vous modifiez
+> les filtres entreprises après le chargement, le bloc contacts disparaît : recliquez.
+> L'affichage entreprises étant plafonné à 1 000 lignes, l'export contacts ne couvre
+> que les entreprises listées.
 """)
 
     with st.expander("👥 Onglet Contacts — sous-onglets"):
